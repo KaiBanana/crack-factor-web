@@ -1,5 +1,6 @@
 import {predictTarget, validateComposition, balanceComposition} from './inference.mjs';
 import {loadModel} from './model-loader.mjs';
+import {initCharts} from './charts.mjs';
 const $ = id => document.getElementById(id);
 const names = ['凝固区间','凝固裂纹指数','热撕裂敏感性判据','应变时效裂纹指数','γ′ 相含量（900 ℃）','M₆C 最大相含量'];
 const english = ['Freezing range · RF','Solidification cracking index · SCI','Hot-tearing susceptibility criterion · HSC','Strain-age cracking index · SAC','γ′ phase fraction at 900 ℃','Maximum M₆C phase fraction'];
@@ -8,8 +9,8 @@ const keys = ['RF','SCI','HSC','SAC','gamma_comma_900','M6C_max'];
 // using Fe=0 and unlisted trace elements=0 to fit the existing element inputs.
 const exampleIN625 = {Cr:21.5,Co:0,Mo:9,W:0,Al:0.2,Ti:0.2,Nb:3.65,Ta:0,B:0,C:0.03,Hf:0,Zr:0};
 const format = x => x === 0 ? '0' : x >= 1e6 || x < .0001 ? x.toExponential(3) : Number(x.toPrecision(5)).toString();
-let model, busy = false;
-function clearResults(){document.querySelectorAll('.result-value').forEach(e=>e.textContent='—');$('state').textContent='等待计算';$('warning').textContent='';}
+let model, updateCharts, busy = false;
+function clearResults(){document.querySelectorAll('.result-value').forEach(e=>e.textContent='—');$('state').textContent='等待计算';$('warning').textContent='';updateCharts?.(null);}
 keys.forEach((key,i)=>{const card=document.createElement('div');card.className='result';card.innerHTML=`<div class="result-label">${names[i]}</div><div class="result-english">${english[i]}</div><div class="result-value" id="result-${key}">—</div>`;$('results').append(card);});
 function getValues(){
   const composition = Object.fromEntries(model.elements.filter(e=>e!=='Ni').map(e=>{
@@ -44,6 +45,8 @@ $('form').addEventListener('submit',async event=>{
     if(values.some(v=>!Number.isFinite(v)))throw new Error('计算未得到有效结果，请检查输入。');
     await new Promise(resolve=>setTimeout(resolve,Math.max(0,10000-(performance.now()-started))));
     model.targets.forEach((t,i)=>$(`result-${t.name}`).textContent=format(values[i]));
+    updateCharts?.([values[3],values[0],values[4],input[model.elements.indexOf('Al')],
+      .5*input[model.elements.indexOf('W')]+.3*input[model.elements.indexOf('Nb')]+.15*input[model.elements.indexOf('Ta')]]);
     $('state').textContent='计算完成';
     $('warning').textContent=outside.length?`${outside.join('、')} 超出训练数据范围，结果属于外推。`:'';
   }catch(e){$('error').textContent=e.message;$('state').textContent='请检查输入';}
@@ -60,4 +63,5 @@ try{
   });
   $('composition-note').textContent='成分单位为 wt.%，Ni 为余量（balance）。';
   setBusy(false);setExample();
+  initCharts(model).then(update=>{updateCharts=update;}).catch(()=>{$('charts').textContent='图表加载失败，请刷新页面重试。';});
 }catch(e){$('error').textContent=`${e.message}。请刷新页面重试。`;$('submit').textContent='加载失败';}
